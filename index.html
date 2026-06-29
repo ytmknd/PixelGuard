@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PixelGuard</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="操作パネル" data-i18n-aria-label="sidebarLabel">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">PG</div>
+        <div>
+          <h1>PixelGuard</h1>
+          <p data-i18n="appSubtitle">画像/PDF モザイク編集</p>
+        </div>
+      </div>
+
+      <label id="upload-box" class="upload-box" for="file-input" role="button" tabindex="0">
+        <span class="upload-icon" aria-hidden="true">+</span>
+        <span class="upload-title" data-i18n="uploadTitle">ファイルを選択</span>
+        <span class="upload-hint" data-i18n="uploadHint">PNG, JPEG, WebP, PDF をドロップ</span>
+      </label>
+      <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,application/pdf">
+
+      <section class="control-group">
+        <h2 data-i18n="output">出力</h2>
+        <div class="segmented" role="group" aria-label="出力形式" data-i18n-aria-label="outputType">
+          <label>
+            <input type="radio" name="export-type" value="image" checked>
+            <span data-i18n="image">画像</span>
+          </label>
+          <label>
+            <input type="radio" name="export-type" value="pdf">
+            <span>PDF</span>
+          </label>
+        </div>
+        <button id="download-btn" class="primary" type="button" disabled data-i18n="download">ダウンロード</button>
+      </section>
+
+      <section class="control-group">
+        <h2 data-i18n="mosaic">モザイク</h2>
+        <label class="range-row" for="block-size">
+          <span data-i18n="coarseness">粗さ</span>
+          <output id="block-size-value">14</output>
+        </label>
+        <input id="block-size" type="range" min="4" max="48" step="1" value="14">
+        <button id="apply-btn" type="button" disabled data-i18n="applyMosaic">選択範囲に適用</button>
+        <button id="clear-selection-btn" type="button" disabled data-i18n="clearSelection">選択を解除</button>
+      </section>
+
+      <section class="control-group">
+        <h2 data-i18n="crop">トリミング</h2>
+        <button id="crop-start-btn" type="button" disabled data-i18n="crop">トリミング</button>
+        <div class="crop-actions">
+          <button id="crop-current-btn" type="button" disabled data-i18n="applyCurrentPage">現在ページに適用</button>
+          <button id="crop-all-btn" type="button" disabled data-i18n="applyAllPages">全ページに適用</button>
+          <button id="crop-cancel-btn" type="button" disabled data-i18n="cancel">キャンセル</button>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <h2 data-i18n="page">ページ</h2>
+        <div class="page-controls">
+          <button id="prev-page-btn" type="button" disabled aria-label="前のページ" data-i18n-aria-label="previousPage">‹</button>
+          <span id="page-status">- / -</span>
+          <button id="next-page-btn" type="button" disabled aria-label="次のページ" data-i18n-aria-label="nextPage">›</button>
+        </div>
+      </section>
+
+      <section class="status-panel" aria-live="polite">
+        <h2 data-i18n="status">状態</h2>
+        <p id="status-text" data-i18n="chooseFile">ファイルを選択してください。</p>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <div class="canvas-shell">
+        <canvas id="document-canvas" aria-label="編集プレビュー" data-i18n-aria-label="canvasPreview"></canvas>
+        <div id="selection-box" class="selection-box" hidden></div>
+        <div id="crop-overlay" class="crop-overlay" hidden>
+          <div class="crop-shade crop-shade-top"></div>
+          <div class="crop-shade crop-shade-right"></div>
+          <div class="crop-shade crop-shade-bottom"></div>
+          <div class="crop-shade crop-shade-left"></div>
+          <div id="crop-frame" class="crop-frame">
+            <span class="crop-line crop-line-n" data-handle="n"></span>
+            <span class="crop-line crop-line-e" data-handle="e"></span>
+            <span class="crop-line crop-line-s" data-handle="s"></span>
+            <span class="crop-line crop-line-w" data-handle="w"></span>
+            <span class="crop-handle crop-handle-nw" data-handle="nw"></span>
+            <span class="crop-handle crop-handle-ne" data-handle="ne"></span>
+            <span class="crop-handle crop-handle-se" data-handle="se"></span>
+            <span class="crop-handle crop-handle-sw" data-handle="sw"></span>
+            <span class="crop-handle crop-handle-n" data-handle="n"></span>
+            <span class="crop-handle crop-handle-e" data-handle="e"></span>
+            <span class="crop-handle crop-handle-s" data-handle="s"></span>
+            <span class="crop-handle crop-handle-w" data-handle="w"></span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
