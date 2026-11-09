@@ -8,6 +8,8 @@ Public site: https://ytmknd.github.io/PixelGuard
 
 - Open PNG, JPEG, WebP, and PDF files.
 - Drag and drop files into the upload area.
+- Paste images or PDFs from the clipboard with Ctrl+V (Cmd+V on macOS) or the **Paste from clipboard** button.
+- Copy the edited current page to the clipboard as a PNG with the **Copy to clipboard** button or Ctrl+C (Cmd+C).
 - Select an area and apply a mosaic effect.
 - Crop images and PDF pages with a PowerPoint-like crop UI.
 - Restore previously cropped-out areas by reopening crop mode and expanding the crop handles.

@@ -21,9 +21,10 @@
       <label id="upload-box" class="upload-box" for="file-input" role="button" tabindex="0">
         <span class="upload-icon" aria-hidden="true">+</span>
         <span class="upload-title" data-i18n="uploadTitle">ファイルを選択</span>
-        <span class="upload-hint" data-i18n="uploadHint">PNG, JPEG, WebP, PDF をドロップ</span>
+        <span class="upload-hint" data-i18n="uploadHint">PNG, JPEG, WebP, PDF をドロップ / Ctrl+V で貼り付け</span>
       </label>
       <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,application/pdf">
+      <button id="paste-btn" type="button" data-i18n="pasteFromClipboard">クリップボードから貼り付け</button>
 
       <section class="control-group">
         <h2 data-i18n="output">出力</h2>
@@ -38,6 +39,7 @@
           </label>
         </div>
         <button id="download-btn" class="primary" type="button" disabled data-i18n="download">ダウンロード</button>
+        <button id="copy-btn" type="button" disabled data-i18n="copyToClipboard">クリップボードにコピー</button>
       </section>
 
       <section class="control-group">

@@ -2,6 +2,8 @@
   const els = {
     fileInput: document.getElementById("file-input"),
     uploadBox: document.getElementById("upload-box"),
+    pasteBtn: document.getElementById("paste-btn"),
+    copyBtn: document.getElementById("copy-btn"),
     canvas: document.getElementById("document-canvas"),
     selectionBox: document.getElementById("selection-box"),
     applyBtn: document.getElementById("apply-btn"),
@@ -28,7 +30,15 @@
       sidebarLabel: "操作パネル",
       appSubtitle: "画像/PDF モザイク編集",
       uploadTitle: "ファイルを選択",
-      uploadHint: "PNG, JPEG, WebP, PDF をドロップ",
+      uploadHint: "PNG, JPEG, WebP, PDF をドロップ / Ctrl+V で貼り付け",
+      pasteFromClipboard: "クリップボードから貼り付け",
+      copyToClipboard: "クリップボードにコピー",
+      clipboardNoFile: "クリップボードに画像またはPDFがありません。",
+      clipboardReadUnsupported: "このブラウザはボタンからの貼り付けに対応していません。Ctrl+V で貼り付けてください。",
+      clipboardReadDenied: "クリップボードの読み取りが許可されませんでした。Ctrl+V で貼り付けてください。",
+      clipboardWriteUnsupported: "このブラウザは画像のクリップボードへのコピーに対応していません。",
+      clipboardWriteFailed: "クリップボードにコピーできませんでした。",
+      copied: "現在ページの画像をクリップボードにコピーしました。",
       output: "出力",
       outputType: "出力形式",
       image: "画像",
@@ -72,7 +82,15 @@
       sidebarLabel: "Controls",
       appSubtitle: "Image/PDF mosaic editor",
       uploadTitle: "Choose a file",
-      uploadHint: "Drop PNG, JPEG, WebP, or PDF",
+      uploadHint: "Drop PNG, JPEG, WebP, or PDF / paste with Ctrl+V",
+      pasteFromClipboard: "Paste from clipboard",
+      copyToClipboard: "Copy to clipboard",
+      clipboardNoFile: "The clipboard does not contain an image or PDF.",
+      clipboardReadUnsupported: "This browser does not support pasting from the button. Press Ctrl+V to paste.",
+      clipboardReadDenied: "Clipboard access was not allowed. Press Ctrl+V to paste.",
+      clipboardWriteUnsupported: "This browser does not support copying images to the clipboard.",
+      clipboardWriteFailed: "Could not copy to the clipboard.",
+      copied: "Copied the current page image to the clipboard.",
       output: "Output",
       outputType: "Output format",
       image: "Image",
@@ -228,11 +246,109 @@
 
   function getDroppedFile(event) {
     const files = Array.from(event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files : []);
-    return files.find((file) => {
-      const name = file.name.toLowerCase();
-      return file.type.startsWith("image/") || file.type === "application/pdf" || name.endsWith(".pdf");
-    }) || null;
+    return files.find(isSupportedFile) || null;
   }
+
+  function isSupportedFile(file) {
+    const name = (file.name || "").toLowerCase();
+    return file.type.startsWith("image/") || file.type === "application/pdf" || name.endsWith(".pdf");
+  }
+
+  function getClipboardEventFile(clipboardData) {
+    if (!clipboardData) return null;
+    const files = Array.from(clipboardData.files || []);
+    for (const item of Array.from(clipboardData.items || [])) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+    const file = files.find(isSupportedFile);
+    return file ? nameClipboardFile(file, file.type) : null;
+  }
+
+  // Browsers name pasted bitmaps generically (e.g. "image.png"); keep real file names only.
+  function nameClipboardFile(blob, type) {
+    const name = blob.name || "";
+    if (name && !/^image\.\w+$/i.test(name)) return blob;
+    const extension = type === "application/pdf" ? "pdf" : (type.split("/")[1] || "png");
+    return new File([blob], `clipboard.${extension}`, { type });
+  }
+
+  async function pasteFromClipboardApi() {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      setStatus(t("clipboardReadUnsupported"));
+      return;
+    }
+
+    let items;
+    try {
+      items = await navigator.clipboard.read();
+    } catch (error) {
+      console.error(error);
+      setStatus(t(error && error.name === "NotAllowedError" ? "clipboardReadDenied" : "clipboardReadUnsupported"));
+      return;
+    }
+
+    for (const item of items) {
+      const type = item.types.find((itemType) => itemType.startsWith("image/") || itemType === "application/pdf");
+      if (!type) continue;
+      const blob = await item.getType(type);
+      await openFile(nameClipboardFile(blob, type));
+      return;
+    }
+    setStatus(t("clipboardNoFile"));
+  }
+
+  async function copyCurrentPageToClipboard() {
+    if (!hasDocument() || state.cropMode) return;
+    if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === "undefined") {
+      setStatus(t("clipboardWriteUnsupported"));
+      return;
+    }
+
+    try {
+      const page = state.pages[state.currentPage];
+      // Pass a Promise so Safari keeps the user activation while the PNG is encoded.
+      const item = new ClipboardItem({ "image/png": canvasToBlob(page.canvas) });
+      await navigator.clipboard.write([item]);
+      setStatus(t("copied"));
+    } catch (error) {
+      console.error(error);
+      setStatus(t("clipboardWriteFailed"));
+    }
+  }
+
+  function isEditableTarget(target) {
+    if (!target || !(target instanceof Element)) return false;
+    if (target.isContentEditable) return true;
+    if (target.tagName === "TEXTAREA") return true;
+    if (target.tagName !== "INPUT") return false;
+    return ["text", "search", "url", "email", "number", "password", "tel"].includes(target.type);
+  }
+
+  document.addEventListener("paste", async (event) => {
+    if (isEditableTarget(event.target)) return;
+    const file = getClipboardEventFile(event.clipboardData);
+    if (!file) {
+      setStatus(t("clipboardNoFile"));
+      return;
+    }
+    event.preventDefault();
+    await openFile(file);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    if (event.key.toLowerCase() !== "c") return;
+    if (isEditableTarget(event.target) || !hasDocument() || state.cropMode) return;
+    const selection = window.getSelection();
+    if (selection && selection.toString()) return;
+    event.preventDefault();
+    copyCurrentPageToClipboard();
+  });
+
+  els.pasteBtn.addEventListener("click", pasteFromClipboardApi);
+  els.copyBtn.addEventListener("click", copyCurrentPageToClipboard);
 
   els.applyBtn.addEventListener("click", () => {
     if (!hasDocument() || !state.selection) return;
@@ -780,14 +896,19 @@
     });
   }
 
-  function canvasToPngBytes(canvas) {
+  async function canvasToPngBytes(canvas) {
+    const blob = await canvasToBlob(canvas);
+    return blob.arrayBuffer();
+  }
+
+  function canvasToBlob(canvas) {
     return new Promise((resolve, reject) => {
-      canvas.toBlob(async (blob) => {
+      canvas.toBlob((blob) => {
         if (!blob) {
           reject(new Error(t("pageImageExportFailed")));
           return;
         }
-        resolve(await blob.arrayBuffer());
+        resolve(blob);
       }, "image/png");
     });
   }
@@ -840,6 +961,7 @@
     els.cropCancelBtn.disabled = !cropping;
     els.clearSelectionBtn.disabled = !loaded || !hasSelection || cropping;
     els.downloadBtn.disabled = !loaded || cropping;
+    els.copyBtn.disabled = !loaded || cropping;
     els.prevPageBtn.disabled = !loaded || cropping || state.currentPage <= 0;
     els.nextPageBtn.disabled = !loaded || cropping || state.currentPage >= state.pages.length - 1;
     els.pageStatus.textContent = loaded ? `${state.currentPage + 1} / ${state.pages.length}` : "- / -";
