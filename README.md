@@ -11,6 +11,7 @@ Public site: https://ytmknd.github.io/PixelGuard
 - Paste images or PDFs from the clipboard with Ctrl+V (Cmd+V on macOS) or the **Paste from clipboard** button.
 - Copy the edited current page to the clipboard as a PNG with the **Copy to clipboard** button or Ctrl+C (Cmd+C).
 - Select an area and apply a mosaic effect.
+- Turn on the magnifier to see the area under the cursor enlarged (2x–8x) while selecting or cropping.
 - Crop images and PDF pages with a PowerPoint-like crop UI.
 - Restore previously cropped-out areas by reopening crop mode and expanding the crop handles.
 - Export the edited result as a PNG image or PDF.

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PixelGuard</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script src="./app.js" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=2">
+  <script src="./app.js?v=2" defer></script>
 </head>
 <body>
   <div class="app">
@@ -40,6 +40,16 @@
         </div>
         <button id="download-btn" class="primary" type="button" disabled data-i18n="download">ダウンロード</button>
         <button id="copy-btn" type="button" disabled data-i18n="copyToClipboard">クリップボードにコピー</button>
+      </section>
+
+      <section class="control-group">
+        <h2 data-i18n="magnifier">虫眼鏡</h2>
+        <button id="magnifier-btn" type="button" disabled aria-pressed="false">虫眼鏡: オフ</button>
+        <label class="range-row" for="magnifier-zoom">
+          <span data-i18n="magnification">倍率</span>
+          <output id="magnifier-zoom-value">3x</output>
+        </label>
+        <input id="magnifier-zoom" type="range" min="2" max="8" step="1" value="3">
       </section>
 
       <section class="control-group">
@@ -82,6 +92,7 @@
       <div class="canvas-shell">
         <canvas id="document-canvas" aria-label="編集プレビュー" data-i18n-aria-label="canvasPreview"></canvas>
         <div id="selection-box" class="selection-box" hidden></div>
+        <canvas id="magnifier-lens" class="magnifier-lens" hidden aria-hidden="true"></canvas>
         <div id="crop-overlay" class="crop-overlay" hidden>
           <div class="crop-shade crop-shade-top"></div>
           <div class="crop-shade crop-shade-right"></div>

@@ -6,6 +6,10 @@
     copyBtn: document.getElementById("copy-btn"),
     canvas: document.getElementById("document-canvas"),
     selectionBox: document.getElementById("selection-box"),
+    magnifierBtn: document.getElementById("magnifier-btn"),
+    magnifierZoom: document.getElementById("magnifier-zoom"),
+    magnifierZoomValue: document.getElementById("magnifier-zoom-value"),
+    magnifierLens: document.getElementById("magnifier-lens"),
     applyBtn: document.getElementById("apply-btn"),
     cropStartBtn: document.getElementById("crop-start-btn"),
     cropCurrentBtn: document.getElementById("crop-current-btn"),
@@ -44,6 +48,10 @@
       image: "画像",
       download: "ダウンロード",
       mosaic: "モザイク",
+      magnifier: "虫眼鏡",
+      magnifierOn: "虫眼鏡: オン",
+      magnifierOff: "虫眼鏡: オフ",
+      magnification: "倍率",
       coarseness: "粗さ",
       applyMosaic: "選択範囲に適用",
       clearSelection: "選択を解除",
@@ -96,6 +104,10 @@
       image: "Image",
       download: "Download",
       mosaic: "Mosaic",
+      magnifier: "Magnifier",
+      magnifierOn: "Magnifier: On",
+      magnifierOff: "Magnifier: Off",
+      magnification: "Zoom",
       coarseness: "Block size",
       applyMosaic: "Apply to selection",
       clearSelection: "Clear selection",
@@ -142,7 +154,9 @@
     activePointerId: null,
     cropMode: false,
     cropRect: null,
-    cropDrag: null
+    cropDrag: null,
+    magnifier: false,
+    lastPointer: null
   };
 
   function getLocale() {
@@ -160,12 +174,21 @@
   function applyI18n() {
     document.documentElement.lang = locale;
     document.title = t("appTitle");
+    // Keep the HTML fallback text when a key is missing instead of showing the raw key.
     document.querySelectorAll("[data-i18n]").forEach((element) => {
-      element.textContent = t(element.dataset.i18n);
+      if (hasMessage(element.dataset.i18n)) {
+        element.textContent = t(element.dataset.i18n);
+      }
     });
     document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
-      element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+      if (hasMessage(element.dataset.i18nAriaLabel)) {
+        element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+      }
     });
+  }
+
+  function hasMessage(key) {
+    return Boolean((messages[locale] && messages[locale][key]) || messages.en[key]);
   }
 
   window.addEventListener("error", (event) => {
@@ -219,6 +242,109 @@
   els.blockSize.addEventListener("input", () => {
     els.blockSizeValue.value = els.blockSize.value;
   });
+
+  const LENS_SIZE = 180;
+  const lensCtx = els.magnifierLens.getContext("2d");
+
+  els.magnifierBtn.addEventListener("click", () => {
+    state.magnifier = !state.magnifier;
+    if (!state.magnifier) hideMagnifier();
+    updateControls();
+  });
+
+  els.magnifierZoom.addEventListener("input", () => {
+    els.magnifierZoomValue.value = `${els.magnifierZoom.value}x`;
+    updateMagnifier();
+  });
+
+  const canvasShell = els.canvas.parentElement;
+  canvasShell.addEventListener("pointermove", (event) => {
+    state.lastPointer = { clientX: event.clientX, clientY: event.clientY };
+    updateMagnifier();
+  });
+  canvasShell.addEventListener("pointerleave", () => {
+    state.lastPointer = null;
+    hideMagnifier();
+  });
+
+  function hideMagnifier() {
+    els.magnifierLens.hidden = true;
+  }
+
+  // Draws a circular lens centered on the pointer, magnifying the preview canvas.
+  function updateMagnifier() {
+    const pointer = state.lastPointer;
+    if (!state.magnifier || !hasDocument() || !pointer) {
+      hideMagnifier();
+      return;
+    }
+
+    const canvasRect = els.canvas.getBoundingClientRect();
+    if (
+      !canvasRect.width ||
+      pointer.clientX < canvasRect.left ||
+      pointer.clientX > canvasRect.right ||
+      pointer.clientY < canvasRect.top ||
+      pointer.clientY > canvasRect.bottom
+    ) {
+      hideMagnifier();
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const pixelSize = Math.round(LENS_SIZE * dpr);
+    if (els.magnifierLens.width !== pixelSize) {
+      els.magnifierLens.width = pixelSize;
+      els.magnifierLens.height = pixelSize;
+    }
+
+    // Canvas pixels per CSS pixel of the displayed preview.
+    const scale = els.canvas.width / canvasRect.width;
+    const zoom = Number(els.magnifierZoom.value);
+    const sourceSize = (LENS_SIZE / zoom) * scale;
+    const centerX = (pointer.clientX - canvasRect.left) * scale;
+    const centerY = (pointer.clientY - canvasRect.top) * scale;
+    const sourceX = centerX - sourceSize / 2;
+    const sourceY = centerY - sourceSize / 2;
+    const ratio = pixelSize / sourceSize;
+
+    lensCtx.save();
+    lensCtx.setTransform(1, 0, 0, 1, 0, 0);
+    lensCtx.fillStyle = "#cbd4dd";
+    lensCtx.fillRect(0, 0, pixelSize, pixelSize);
+    lensCtx.imageSmoothingEnabled = false;
+    lensCtx.setTransform(ratio, 0, 0, ratio, -sourceX * ratio, -sourceY * ratio);
+    lensCtx.drawImage(els.canvas, 0, 0);
+
+    const rect = state.cropMode ? state.cropRect : state.selection;
+    if (rect && rect.width >= 2 && rect.height >= 2) {
+      lensCtx.lineWidth = 2 / ratio;
+      lensCtx.strokeStyle = state.cropMode ? "#111111" : "#22736b";
+      lensCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    }
+    lensCtx.restore();
+
+    // Crosshair marking the exact pointer position.
+    const mid = pixelSize / 2;
+    const arm = 8 * dpr;
+    lensCtx.lineWidth = Math.max(1, dpr);
+    lensCtx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    lensCtx.beginPath();
+    lensCtx.moveTo(mid - arm, mid);
+    lensCtx.lineTo(mid + arm, mid);
+    lensCtx.moveTo(mid, mid - arm);
+    lensCtx.lineTo(mid, mid + arm);
+    lensCtx.stroke();
+    lensCtx.strokeStyle = "rgba(28, 37, 48, 0.85)";
+    lensCtx.setLineDash([2 * dpr, 2 * dpr]);
+    lensCtx.stroke();
+    lensCtx.setLineDash([]);
+
+    const shellRect = canvasShell.getBoundingClientRect();
+    els.magnifierLens.style.left = `${pointer.clientX - shellRect.left - LENS_SIZE / 2}px`;
+    els.magnifierLens.style.top = `${pointer.clientY - shellRect.top - LENS_SIZE / 2}px`;
+    els.magnifierLens.hidden = false;
+  }
 
   async function openFile(file) {
     try {
@@ -489,6 +615,7 @@
     const dy = point.y - state.cropDrag.startPoint.y;
     state.cropRect = updateCropRect(state.cropDrag.startRect, state.cropDrag.handle, dx, dy);
     positionCropOverlay();
+    updateMagnifier();
   });
 
   els.cropFrame.addEventListener("pointerup", finishCropDrag);
@@ -627,6 +754,7 @@
     ctx.drawImage(renderCanvas, 0, 0);
     positionSelectionBox();
     positionCropOverlay();
+    updateMagnifier();
   }
 
   function enterCropMode() {
@@ -947,6 +1075,7 @@
     ctx.fillRect(0, 0, els.canvas.width, els.canvas.height);
     els.selectionBox.hidden = true;
     els.cropOverlay.hidden = true;
+    hideMagnifier();
     updateControls();
   }
 
@@ -962,6 +1091,10 @@
     els.clearSelectionBtn.disabled = !loaded || !hasSelection || cropping;
     els.downloadBtn.disabled = !loaded || cropping;
     els.copyBtn.disabled = !loaded || cropping;
+    els.magnifierBtn.disabled = !loaded;
+    els.magnifierBtn.textContent = t(state.magnifier ? "magnifierOn" : "magnifierOff");
+    els.magnifierBtn.setAttribute("aria-pressed", String(state.magnifier));
+    els.magnifierBtn.classList.toggle("is-active", state.magnifier);
     els.prevPageBtn.disabled = !loaded || cropping || state.currentPage <= 0;
     els.nextPageBtn.disabled = !loaded || cropping || state.currentPage >= state.pages.length - 1;
     els.pageStatus.textContent = loaded ? `${state.currentPage + 1} / ${state.pages.length}` : "- / -";

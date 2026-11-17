@@ -479,3 +479,21 @@ button:disabled {
     padding: 10px;
   }
 }
+
+button.is-active {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+
+.magnifier-lens {
+  position: absolute;
+  z-index: 5;
+  width: 180px;
+  height: 180px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(28, 37, 48, 0.45), 0 10px 26px rgba(28, 37, 48, 0.35);
+  pointer-events: none;
+}
