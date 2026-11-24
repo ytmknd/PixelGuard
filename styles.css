@@ -52,7 +52,7 @@ button:disabled {
 .app {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .sidebar {
@@ -62,6 +62,7 @@ button:disabled {
   padding: 24px;
   border-right: 1px solid var(--line);
   background: var(--panel);
+  overflow-y: auto;
 }
 
 .brand {
@@ -215,7 +216,8 @@ button:disabled {
   font-size: 13px;
 }
 
-#block-size {
+#block-size,
+#magnifier-zoom {
   width: 100%;
   accent-color: var(--accent);
 }
@@ -224,6 +226,12 @@ button:disabled {
   display: grid;
   grid-template-columns: 42px 1fr 42px;
   align-items: center;
+  gap: 8px;
+}
+
+.zoom-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
@@ -248,16 +256,17 @@ button:disabled {
 .workspace {
   display: grid;
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
   padding: 28px;
-  place-items: center;
   overflow: auto;
 }
 
+/* margin: auto centers the shell while it fits, and keeps its top/left reachable by scrolling once zoomed larger. */
 .canvas-shell {
   position: relative;
   display: grid;
   place-items: center;
+  margin: auto;
   min-width: min(100%, 420px);
   min-height: min(78vh, 720px);
   padding: 18px;
@@ -276,6 +285,15 @@ button:disabled {
   background: white;
   box-shadow: 0 4px 18px rgba(28, 37, 48, 0.2);
   cursor: crosshair;
+}
+
+#document-canvas.is-zoomed {
+  max-width: none;
+  max-height: none;
+}
+
+#document-canvas.is-pixelated {
+  image-rendering: pixelated;
 }
 
 #document-canvas.is-cropping {
@@ -461,14 +479,18 @@ button:disabled {
 @media (max-width: 780px) {
   .app {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
   }
 
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    overflow-y: visible;
   }
 
   .workspace {
+    height: 80vh;
     min-height: 60vh;
     padding: 16px;
   }
@@ -496,4 +518,13 @@ button.is-active {
   background: #ffffff;
   box-shadow: 0 0 0 1px rgba(28, 37, 48, 0.45), 0 10px 26px rgba(28, 37, 48, 0.35);
   pointer-events: none;
+}
+
+.segmented input:disabled + span {
+  color: #9ba7b3;
+  cursor: not-allowed;
+}
+
+#document-canvas.is-text-mode {
+  cursor: text;
 }

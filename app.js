@@ -2,6 +2,12 @@
   const els = {
     fileInput: document.getElementById("file-input"),
     uploadBox: document.getElementById("upload-box"),
+    workspace: document.getElementById("workspace"),
+    zoomOutBtn: document.getElementById("zoom-out-btn"),
+    zoomInBtn: document.getElementById("zoom-in-btn"),
+    zoomFitBtn: document.getElementById("zoom-fit-btn"),
+    zoomActualBtn: document.getElementById("zoom-actual-btn"),
+    zoomValue: document.getElementById("zoom-value"),
     pasteBtn: document.getElementById("paste-btn"),
     copyBtn: document.getElementById("copy-btn"),
     canvas: document.getElementById("document-canvas"),
@@ -11,6 +17,7 @@
     magnifierZoomValue: document.getElementById("magnifier-zoom-value"),
     magnifierLens: document.getElementById("magnifier-lens"),
     applyBtn: document.getElementById("apply-btn"),
+    selectModeText: document.getElementById("select-mode-text"),
     cropStartBtn: document.getElementById("crop-start-btn"),
     cropCurrentBtn: document.getElementById("crop-current-btn"),
     cropAllBtn: document.getElementById("crop-all-btn"),
@@ -48,11 +55,19 @@
       image: "画像",
       download: "ダウンロード",
       mosaic: "モザイク",
+      view: "表示",
+      zoomIn: "拡大",
+      zoomOut: "縮小",
+      zoomFit: "全体表示",
       magnifier: "虫眼鏡",
       magnifierOn: "虫眼鏡: オン",
       magnifierOff: "虫眼鏡: オフ",
       magnification: "倍率",
       coarseness: "粗さ",
+      selectionMode: "選択方法",
+      selectArea: "範囲",
+      selectText: "文字列",
+      selectTextHint: "PDFの文字をドラッグして選択してください。ダブルクリックでひとまとまりを選択できます。",
       applyMosaic: "選択範囲に適用",
       clearSelection: "選択を解除",
       crop: "トリミング",
@@ -104,11 +119,19 @@
       image: "Image",
       download: "Download",
       mosaic: "Mosaic",
+      view: "View",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      zoomFit: "Fit",
       magnifier: "Magnifier",
       magnifierOn: "Magnifier: On",
       magnifierOff: "Magnifier: Off",
       magnification: "Zoom",
       coarseness: "Block size",
+      selectionMode: "Selection method",
+      selectArea: "Area",
+      selectText: "Text",
+      selectTextHint: "Drag across PDF text to select it. Double-click selects a whole text run.",
       applyMosaic: "Apply to selection",
       clearSelection: "Clear selection",
       crop: "Crop",
@@ -156,6 +179,11 @@
     cropRect: null,
     cropDrag: null,
     magnifier: false,
+    selectionMode: "area",
+    // { anchor, focus } character indexes into the current page's textChars.
+    textSelection: null,
+    // null = fit to the workspace; otherwise CSS pixels per canvas pixel.
+    viewZoom: null,
     lastPointer: null
   };
 
@@ -473,15 +501,35 @@
     copyCurrentPageToClipboard();
   });
 
+  document.querySelectorAll("input[name='select-mode']").forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      state.selectionMode = input.value;
+      state.selection = null;
+      state.textSelection = null;
+      renderCurrentPage();
+      setStatus(t(input.value === "text" ? "selectTextHint" : "selectRange"));
+      updateControls();
+    });
+  });
+
   els.pasteBtn.addEventListener("click", pasteFromClipboardApi);
   els.copyBtn.addEventListener("click", copyCurrentPageToClipboard);
 
   els.applyBtn.addEventListener("click", () => {
-    if (!hasDocument() || !state.selection) return;
+    if (!hasDocument() || (!state.selection && !state.textSelection)) return;
     const page = state.pages[state.currentPage];
-    mosaicRect(page.sourceCanvas, toSourceRect(page, state.selection), Number(els.blockSize.value));
+    const blockSize = Number(els.blockSize.value);
+    if (state.textSelection) {
+      for (const rect of getTextSelectionRects(page)) {
+        mosaicRect(page.sourceCanvas, padRect(rect, 2), blockSize);
+      }
+    } else {
+      mosaicRect(page.sourceCanvas, toSourceRect(page, state.selection), blockSize);
+    }
     updatePageView(page);
     state.selection = null;
+    state.textSelection = null;
     renderCurrentPage();
     setStatus(t("mosaicApplied"));
     updateControls();
@@ -523,6 +571,7 @@
 
   els.clearSelectionBtn.addEventListener("click", () => {
     state.selection = null;
+    state.textSelection = null;
     renderCurrentPage();
     setStatus(t("selectionCleared"));
     updateControls();
@@ -533,6 +582,7 @@
     exitCropMode();
     state.currentPage -= 1;
     state.selection = null;
+    state.textSelection = null;
     renderCurrentPage();
     setStatus(t("pageMoved"));
     updateControls();
@@ -543,6 +593,7 @@
     exitCropMode();
     state.currentPage += 1;
     state.selection = null;
+    state.textSelection = null;
     renderCurrentPage();
     setStatus(t("pageMoved"));
     updateControls();
@@ -570,6 +621,19 @@
     if (!hasDocument() || state.cropMode) return;
     const point = getCanvasPoint(event);
     if (!point) return;
+
+    if (isTextMode()) {
+      const index = charIndexAtView(point);
+      if (index < 0) return;
+      event.preventDefault();
+      state.textSelection = { anchor: index, focus: index };
+      state.activePointerId = event.pointerId;
+      els.canvas.setPointerCapture(event.pointerId);
+      renderCurrentPage();
+      updateControls();
+      return;
+    }
+
     state.dragStart = point;
     state.selection = { x: point.x, y: point.y, width: 0, height: 0 };
     state.activePointerId = event.pointerId;
@@ -579,15 +643,44 @@
   });
 
   els.canvas.addEventListener("pointermove", (event) => {
-    if (state.activePointerId !== event.pointerId || !state.dragStart) return;
+    if (state.activePointerId !== event.pointerId) return;
     const point = getCanvasPoint(event);
     if (!point) return;
+
+    if (isTextMode() && state.textSelection) {
+      const index = charIndexAtView(point);
+      if (index >= 0 && index !== state.textSelection.focus) {
+        state.textSelection = { anchor: state.textSelection.anchor, focus: index };
+        renderCurrentPage();
+        updateControls();
+      }
+      return;
+    }
+
+    if (!state.dragStart) return;
     state.selection = normalizeRect(state.dragStart.x, state.dragStart.y, point.x, point.y);
     renderCurrentPage();
     updateControls();
   });
 
   els.canvas.addEventListener("pointerup", finishDrag);
+
+  // Double-click selects the whole text run (pdf.js text item) under the pointer.
+  els.canvas.addEventListener("dblclick", (event) => {
+    if (!hasDocument() || state.cropMode || !isTextMode()) return;
+    const point = getCanvasPoint(event);
+    const page = state.pages[state.currentPage];
+    const index = point ? charIndexAtView(point) : -1;
+    if (index < 0) return;
+    const item = page.textChars[index].item;
+    let start = index;
+    let end = index;
+    while (start > 0 && page.textChars[start - 1].item === item) start -= 1;
+    while (end < page.textChars.length - 1 && page.textChars[end + 1].item === item) end += 1;
+    state.textSelection = { anchor: start, focus: end };
+    renderCurrentPage();
+    updateControls();
+  });
   els.canvas.addEventListener("pointercancel", finishDrag);
 
   els.cropFrame.addEventListener("pointerdown", (event) => {
@@ -623,7 +716,100 @@
   window.addEventListener("resize", () => {
     positionSelectionBox();
     positionCropOverlay();
+    updateControls();
   });
+
+  const ZOOM_STEPS = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16];
+  const MIN_ZOOM = ZOOM_STEPS[0];
+  const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+
+  els.zoomInBtn.addEventListener("click", () => stepZoom(1));
+  els.zoomOutBtn.addEventListener("click", () => stepZoom(-1));
+  els.zoomFitBtn.addEventListener("click", () => setViewZoom(null));
+  els.zoomActualBtn.addEventListener("click", () => setViewZoom(1));
+
+  // Ctrl+wheel (and trackpad pinch, which browsers report as Ctrl+wheel) zooms around the cursor.
+  els.workspace.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    if (!hasDocument()) return;
+    event.preventDefault();
+    const factor = Math.exp(-event.deltaY * 0.002);
+    setViewZoom(getDisplayScale() * factor, { clientX: event.clientX, clientY: event.clientY });
+  }, { passive: false });
+
+  els.workspace.addEventListener("scroll", () => updateMagnifier());
+
+  document.addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (isEditableTarget(event.target) || !hasDocument()) return;
+    if (event.key === "+" || event.key === "=" || event.key === ";") {
+      stepZoom(1);
+    } else if (event.key === "-") {
+      stepZoom(-1);
+    } else if (event.key === "0") {
+      setViewZoom(null);
+    } else if (event.key === "1") {
+      setViewZoom(1);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  });
+
+  function getDisplayScale() {
+    const rect = els.canvas.getBoundingClientRect();
+    return rect.width && els.canvas.width ? rect.width / els.canvas.width : 1;
+  }
+
+  function stepZoom(direction) {
+    if (!hasDocument()) return;
+    const current = getDisplayScale();
+    const next = direction > 0
+      ? ZOOM_STEPS.find((step) => step > current * 1.001)
+      : [...ZOOM_STEPS].reverse().find((step) => step < current * 0.999);
+    setViewZoom(next === undefined ? (direction > 0 ? MAX_ZOOM : MIN_ZOOM) : next);
+  }
+
+  // Changes the zoom while keeping the anchor point (default: workspace center) fixed on screen.
+  function setViewZoom(zoom, anchor) {
+    if (!hasDocument()) return;
+    const workspaceRect = els.workspace.getBoundingClientRect();
+    const point = anchor || {
+      clientX: workspaceRect.left + workspaceRect.width / 2,
+      clientY: workspaceRect.top + workspaceRect.height / 2
+    };
+    const before = els.canvas.getBoundingClientRect();
+    const relX = before.width ? (point.clientX - before.left) / before.width : 0.5;
+    const relY = before.height ? (point.clientY - before.top) / before.height : 0.5;
+
+    state.viewZoom = zoom === null ? null : clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    applyCanvasZoom();
+
+    if (state.viewZoom === null) {
+      els.workspace.scrollTo(0, 0);
+    } else {
+      const after = els.canvas.getBoundingClientRect();
+      els.workspace.scrollLeft += after.left + relX * after.width - point.clientX;
+      els.workspace.scrollTop += after.top + relY * after.height - point.clientY;
+    }
+    positionSelectionBox();
+    positionCropOverlay();
+    updateMagnifier();
+    updateControls();
+  }
+
+  function applyCanvasZoom() {
+    const zoom = hasDocument() ? state.viewZoom : null;
+    if (zoom === null) {
+      els.canvas.style.width = "";
+      els.canvas.style.height = "";
+    } else {
+      els.canvas.style.width = `${els.canvas.width * zoom}px`;
+      els.canvas.style.height = `${els.canvas.height * zoom}px`;
+    }
+    els.canvas.classList.toggle("is-zoomed", zoom !== null);
+    els.canvas.classList.toggle("is-pixelated", zoom !== null && zoom >= 2);
+  }
 
   function finishDrag(event) {
     if (state.activePointerId !== event.pointerId) return;
@@ -683,11 +869,141 @@
       pageCanvas.width = Math.round(viewport.width);
       pageCanvas.height = Math.round(viewport.height);
       await page.render({ canvasContext: pageCtx, viewport }).promise;
-      pages.push(createPage(pageCanvas));
+      const pageData = createPage(pageCanvas);
+      pageData.textChars = await extractTextChars(page, viewport);
+      pages.push(pageData);
     }
 
     state.fileType = "pdf";
     state.pages = pages;
+  }
+
+  // Returns per-character boxes (source canvas pixels) in pdf.js reading order.
+  // pdf.js only gives a width per text run, so glyph widths inside a run are
+  // estimated proportionally from a generic font's metrics.
+  async function extractTextChars(pdfPage, viewport) {
+    let content;
+    try {
+      content = await pdfPage.getTextContent();
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+
+    const measureCtx = document.createElement("canvas").getContext("2d");
+    measureCtx.font = "100px sans-serif";
+    const chars = [];
+
+    content.items.forEach((item, itemIndex) => {
+      if (!item.str || !item.str.trim() || !item.width) return;
+      const [a, b, c, d, e, f] = item.transform;
+      const dirLength = Math.hypot(a, b) || 1;
+      const fontSize = Math.hypot(c, d) || dirLength;
+      const ux = a / dirLength;
+      const uy = b / dirLength;
+      const vx = c / fontSize;
+      const vy = d / fontSize;
+      const glyphs = Array.from(item.str);
+      const weights = glyphs.map((glyph) => measureCtx.measureText(glyph).width || 50);
+      const total = weights.reduce((sum, weight) => sum + weight, 0);
+      let offset = 0;
+
+      glyphs.forEach((glyph, glyphIndex) => {
+        const start = (offset / total) * item.width;
+        offset += weights[glyphIndex];
+        const end = (offset / total) * item.width;
+        // Cover from slightly below the baseline (descenders) to the top of the em box.
+        const corners = [[start, -0.22], [end, -0.22], [start, 1], [end, 1]].map(([along, up]) => {
+          const x = e + ux * along + vx * up * fontSize;
+          const y = f + uy * along + vy * up * fontSize;
+          return applyMatrix(viewport.transform, x, y);
+        });
+        const xs = corners.map((point) => point[0]);
+        const ys = corners.map((point) => point[1]);
+        const left = Math.min(...xs);
+        const top = Math.min(...ys);
+        chars.push({
+          x: left,
+          y: top,
+          width: Math.max(...xs) - left,
+          height: Math.max(...ys) - top,
+          item: itemIndex
+        });
+      });
+    });
+
+    return chars;
+  }
+
+  function applyMatrix(m, x, y) {
+    return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  }
+
+  function isTextMode() {
+    return state.selectionMode === "text" && !state.cropMode;
+  }
+
+  // Finds the character under (or nearest to) a point given in view coordinates.
+  function charIndexAtView(point) {
+    const page = state.pages[state.currentPage];
+    const chars = (page && page.textChars) || [];
+    if (!chars.length) return -1;
+    const x = point.x + page.crop.x;
+    const y = point.y + page.crop.y;
+    let best = -1;
+    let bestScore = Infinity;
+    for (let i = 0; i < chars.length; i += 1) {
+      const box = chars[i];
+      const dx = Math.max(box.x - x, 0, x - (box.x + box.width));
+      const dy = Math.max(box.y - y, 0, y - (box.y + box.height));
+      if (dx === 0 && dy === 0) return i;
+      // Prefer characters on the same line over vertically closer ones.
+      const score = dy * 4 + dx;
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  // Merges the selected characters into one box per text run (source canvas pixels).
+  function getTextSelectionRects(page) {
+    const selection = state.textSelection;
+    const chars = page.textChars || [];
+    if (!selection || !chars.length) return [];
+    const from = Math.min(selection.anchor, selection.focus);
+    const to = Math.max(selection.anchor, selection.focus);
+    const rects = [];
+    let current = null;
+    for (let i = from; i <= to; i += 1) {
+      const box = chars[i];
+      if (current && current.item === box.item) {
+        const right = Math.max(current.x + current.width, box.x + box.width);
+        const bottom = Math.max(current.y + current.height, box.y + box.height);
+        current.x = Math.min(current.x, box.x);
+        current.y = Math.min(current.y, box.y);
+        current.width = right - current.x;
+        current.height = bottom - current.y;
+      } else {
+        current = { ...box };
+        rects.push(current);
+      }
+    }
+    return rects;
+  }
+
+  function padRect(rect, padding) {
+    return {
+      x: rect.x - padding,
+      y: rect.y - padding,
+      width: rect.width + padding * 2,
+      height: rect.height + padding * 2
+    };
+  }
+
+  function hasSelectableText() {
+    return state.pages.some((page) => page.textChars && page.textChars.length > 0);
   }
 
   async function getPdfJs() {
@@ -752,6 +1068,13 @@
     els.canvas.height = renderCanvas.height;
     ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
     ctx.drawImage(renderCanvas, 0, 0);
+    if (!state.cropMode && state.textSelection) {
+      ctx.fillStyle = "rgba(34, 115, 107, 0.35)";
+      for (const rect of getTextSelectionRects(page)) {
+        ctx.fillRect(rect.x - page.crop.x, rect.y - page.crop.y, rect.width, rect.height);
+      }
+    }
+    applyCanvasZoom();
     positionSelectionBox();
     positionCropOverlay();
     updateMagnifier();
@@ -760,6 +1083,7 @@
   function enterCropMode() {
     const page = state.pages[state.currentPage];
     state.selection = null;
+    state.textSelection = null;
     state.cropMode = true;
     state.cropRect = { ...page.crop };
     els.canvas.classList.add("is-cropping");
@@ -910,8 +1234,8 @@
     const drawCtx = canvas.getContext("2d", { willReadFrequently: true });
     const x = Math.max(0, Math.floor(rect.x));
     const y = Math.max(0, Math.floor(rect.y));
-    const width = Math.min(canvas.width - x, Math.floor(rect.width));
-    const height = Math.min(canvas.height - y, Math.floor(rect.height));
+    const width = Math.min(canvas.width, Math.ceil(rect.x + rect.width)) - x;
+    const height = Math.min(canvas.height, Math.ceil(rect.y + rect.height)) - y;
     if (width <= 0 || height <= 0) return;
 
     for (let by = y; by < y + height; by += blockSize) {
@@ -1057,17 +1381,21 @@
     state.pages = [];
     state.currentPage = 0;
     state.selection = null;
+    state.textSelection = null;
     state.dragStart = null;
     state.activePointerId = null;
     state.cropMode = false;
     state.cropRect = null;
     state.cropDrag = null;
+    state.viewZoom = null;
     els.cropOverlay.hidden = true;
     els.canvas.classList.remove("is-cropping");
+    els.workspace.scrollTo(0, 0);
   }
 
   function initializeEmptyCanvas() {
     els.canvas.classList.add("is-empty");
+    applyCanvasZoom();
     els.canvas.width = 720;
     els.canvas.height = 480;
     ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
@@ -1081,7 +1409,17 @@
 
   function updateControls() {
     const loaded = hasDocument();
-    const hasSelection = Boolean(state.selection && state.selection.width >= 2 && state.selection.height >= 2);
+    const hasSelection = Boolean(
+      (state.selection && state.selection.width >= 2 && state.selection.height >= 2) || state.textSelection
+    );
+    const textAvailable = loaded && hasSelectableText();
+    els.selectModeText.disabled = !textAvailable;
+    if (!textAvailable && state.selectionMode === "text") {
+      state.selectionMode = "area";
+      state.textSelection = null;
+      document.querySelector("input[name='select-mode'][value='area']").checked = true;
+    }
+    els.canvas.classList.toggle("is-text-mode", loaded && isTextMode());
     const cropping = Boolean(state.cropMode && state.cropRect);
     els.applyBtn.disabled = !loaded || !hasSelection || cropping;
     els.cropStartBtn.disabled = !loaded || cropping;
@@ -1098,6 +1436,12 @@
     els.prevPageBtn.disabled = !loaded || cropping || state.currentPage <= 0;
     els.nextPageBtn.disabled = !loaded || cropping || state.currentPage >= state.pages.length - 1;
     els.pageStatus.textContent = loaded ? `${state.currentPage + 1} / ${state.pages.length}` : "- / -";
+    els.zoomOutBtn.disabled = !loaded;
+    els.zoomInBtn.disabled = !loaded;
+    els.zoomFitBtn.disabled = !loaded;
+    els.zoomActualBtn.disabled = !loaded;
+    els.zoomFitBtn.classList.toggle("is-active", loaded && state.viewZoom === null);
+    els.zoomValue.textContent = loaded ? `${Math.round(getDisplayScale() * 100)}%` : "-";
     positionSelectionBox();
     positionCropOverlay();
   }

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PixelGuard</title>
-  <link rel="stylesheet" href="./styles.css?v=2">
-  <script src="./app.js?v=2" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=4">
+  <script src="./app.js?v=4" defer></script>
 </head>
 <body>
   <div class="app">
@@ -43,6 +43,19 @@
       </section>
 
       <section class="control-group">
+        <h2 data-i18n="view">表示</h2>
+        <div class="page-controls">
+          <button id="zoom-out-btn" type="button" disabled aria-label="縮小" data-i18n-aria-label="zoomOut">−</button>
+          <span id="zoom-value">-</span>
+          <button id="zoom-in-btn" type="button" disabled aria-label="拡大" data-i18n-aria-label="zoomIn">+</button>
+        </div>
+        <div class="zoom-presets">
+          <button id="zoom-fit-btn" type="button" disabled data-i18n="zoomFit">全体表示</button>
+          <button id="zoom-actual-btn" type="button" disabled>100%</button>
+        </div>
+      </section>
+
+      <section class="control-group">
         <h2 data-i18n="magnifier">虫眼鏡</h2>
         <button id="magnifier-btn" type="button" disabled aria-pressed="false">虫眼鏡: オフ</button>
         <label class="range-row" for="magnifier-zoom">
@@ -54,6 +67,16 @@
 
       <section class="control-group">
         <h2 data-i18n="mosaic">モザイク</h2>
+        <div class="segmented" role="group" aria-label="選択方法" data-i18n-aria-label="selectionMode">
+          <label>
+            <input type="radio" name="select-mode" value="area" checked>
+            <span data-i18n="selectArea">範囲</span>
+          </label>
+          <label>
+            <input id="select-mode-text" type="radio" name="select-mode" value="text" disabled>
+            <span data-i18n="selectText">文字列</span>
+          </label>
+        </div>
         <label class="range-row" for="block-size">
           <span data-i18n="coarseness">粗さ</span>
           <output id="block-size-value">14</output>
@@ -88,7 +111,7 @@
       </section>
     </aside>
 
-    <main class="workspace">
+    <main id="workspace" class="workspace">
       <div class="canvas-shell">
         <canvas id="document-canvas" aria-label="編集プレビュー" data-i18n-aria-label="canvasPreview"></canvas>
         <div id="selection-box" class="selection-box" hidden></div>
